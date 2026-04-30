@@ -3,54 +3,91 @@ window.addEventListener('DOMContentLoaded', async () => {
     const saveBtn = document.getElementById('save');
     const statusEl = document.getElementById('save_status');
     const saveAsBtn = document.getElementById('save-as');
-    const newNoteBtn = document.getElementById('new-note');
     const openFileBtn = document.getElementById('open-file');
-
-    let lastSavedText = '';
+    const newNoteBtn = document.getElementById('new-note');
 
     const savedNote = await window.electronAPI.loadNote();
     textarea.value = savedNote;
-    lastSavedText = savedNote;
+    let lastSavedText = savedNote;
 
-    // Save As
+
     saveAsBtn.addEventListener('click', async () => {
-        const result = await window.electronAPI.saveAs(textarea.value);
-        if (result.success) {
-            lastSavedText = textarea.value;
+        try{
+            const result = await window.electronAPI.smartsave(textarea.value,currentFilePath);
+            lastsavedtext = textarea.value;
+            currentFilePath = result.filepath;
             statusEl.textContent = `Saved to ${result.filepath}`;
+        }  catch(err){
+            console.error('Save failed:',err)
+            statusEl.textContent = 'Save failed.';
         }
     });
+    
 
-    // New Note
     newNoteBtn.addEventListener('click', async () => {
+        if (textarea.value === lastSavedText) {
+            textarea.value = '';
+            lastSavedText = '';
+            statusEl.textContent = 'New note started.';
+            return;
+        }
         const result = await window.electronAPI.newNote();
         if (result.confirmed) {
             textarea.value = '';
             lastSavedText = '';
+            statusEl.textContent = 'New note started.';
+        } else {
+            statusEl.textContent = 'New note cancelled.';
+        }
+
+    });
+
+    openFileBtn.addEventListener('click', async () => {
+        const result = await window.electronAPI.openFile();
+        if (result.success) {
+            textarea.value = result.content;
+            lastSavedText = result.content;
+            currentFilePath = result.filePath;
+            statusEl.textContent = 'Opened:${result.filePath}';
+        } else {
+            statusEl.textContent = 'Open cancelled.';
         }
     });
-    openFileBtn.addEventListener('click', async () => {
-    const result = await window.electronAPI.openFile();
-    if (result.success) {
-        textarea.value = result.content;
-        lastSavedText = result.content;
+
+
+
+    async function autoSave() {
+        const currentText = textarea.value;
+        if (currentText === lastsavedtext) {
+            statusEl.textContent = 'No changes to save.';
+            return;
+        }
+        try {
+            await window.electronAPI.saveNote(currentText);
+            lastsavedtext = currentText;
+            const now = new Date().toLocalTimeString();
+            statusEl.textContent = 'Auto-saved at ${now}';
+        } catch (err) {
+            console.error('Auto-save failed:', err);
+            statusEl.textContent = 'Auto-save failed. Please try saving manually.';
+        }
     }
-}); 
-
-    // Auto Save
-    let timer;
+    let debounceTimer;
     textarea.addEventListener('input', () => {
-        clearTimeout(timer);
-        timer = setTimeout(async () => {
-            await window.electronAPI.saveNote(textarea.value);
-            lastSavedText = textarea.value;
-        }, 2000);
+        statusEl.textContent = 'changing detected auto-saving in 5 s...';
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(autoSave, 2000);
     });
 
-    // Manual Save
+    // Manual save
     saveBtn.addEventListener('click', async () => {
-        await window.electronAPI.saveNote(textarea.value);
-        alert('Saved!');
+        try {
+            await window.electronAPI.saveNote(textarea.value);
+            alert('Note saved successfully!');
+        } catch (err) {
+            console.error('Manual save failed:', err);
+        }
     });
+
 });
 
